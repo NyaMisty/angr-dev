@@ -33,7 +33,8 @@ function usage
 DEBS=${DEBS-virtualenvwrapper python-pip python2.7-dev build-essential libxml2-dev libxslt1-dev git libffi-dev cmake libreadline-dev libtool debootstrap debian-archive-keyring libglib2.0-dev libpixman-1-dev libqt4-dev binutils-multiarch nasm libssl-dev libc6:i386 libgcc1:i386 libstdc++6:i386 libtinfo5:i386 zlib1g:i386}
 ARCHDEBS=${ARCHDEBS-python-virtualenvwrapper python2-pip libxml2 libxslt git libffi cmake readline libtool debootstrap glib2 pixman qt4 binutils binutils nasm lib32-glibc lib32-gcc-libs lib32-libstdc++5 lib32-zlib}
 ARCHCOMDEBS=${ARCHCOMDEBS-lib32-libtinfo}
-REPOS=${REPOS-ana idalink cooldict mulpyplexer monkeyhex superstruct archinfo vex pyvex cle claripy angr angr-management angrop angr-doc binaries ailment simuvex}
+REPOS=${REPOS-ana idalink cooldict mulpyplexer monkeyhex superstruct simuvex}
+REPOS_py2k=${REPOS_py2k-archinfo vex pyvex cle claripy angr angr-management ailment}
 declare -A EXTRA_DEPS
 EXTRA_DEPS["angr"]="unicorn"
 EXTRA_DEPS["pyvex"]="--pre capstone"
@@ -249,9 +250,14 @@ fi
 function try_remote
 {
 	URL=$1
-	debug "Trying to clone from $URL"
+	BRANCH=$2
+	debug "Trying to clone from $URL to branch $BRANCH"
 	rm -f $CLONE_LOG
-	git clone $GIT_OPTIONS $URL >> $CLONE_LOG 2>> $CLONE_LOG
+	if [ -z "$BRANCH" ]; then
+		git clone $GIT_OPTIONS $URL >> $CLONE_LOG 2>> $CLONE_LOG
+	else
+		git clone $GIT_OPTIONS $URL -b $BRANCH >> $CLONE_LOG 2>> $CLONE_LOG
+	fi
 	r=$?
 
 	if grep -q -E "(ssh_exchange_identification: read: Connection reset by peer|ssh_exchange_identification: Connection closed by remote host)" $CLONE_LOG
@@ -269,6 +275,7 @@ function try_remote
 function clone_repo
 {
 	NAME=$1
+	BRANCH=$2
 	CLONE_LOG=/tmp/clone-$BASHPID
 	if [ -e $NAME ]
 	then
@@ -280,7 +287,7 @@ function clone_repo
 	for r in $REMOTES
 	do
 		URL="$r/$NAME"
-		try_remote $URL && debug "Success - $NAME cloned!" && break
+		try_remote $URL $BRANCH && debug "Success - $NAME cloned!" && break
 	done
 
 	if [ ! -e $NAME ]
@@ -332,6 +339,11 @@ then
 		clone_repo $r || exit 1
 		[ -e "$NAME/setup.py" ] && TO_INSTALL="$TO_INSTALL $NAME"
 	done
+	for r in $REPOS_py2k
+	do
+		clone_repo $r "py2k" || exit 1
+		[ -e "$NAME/setup.py" ] && TO_INSTALL="$TO_INSTALL $NAME"
+	done
 else
 	declare -A CLONE_PROCS
 	for r in $REPOS
@@ -339,8 +351,13 @@ else
 		clone_repo $r &
 		CLONE_PROCS[$r]=$!
 	done
+	for r in $REPOS_py2k
+	do
+		clone_repo $r "py2k" || exit 1
+		[ -e "$NAME/setup.py" ] && TO_INSTALL="$TO_INSTALL $NAME"
+	done
 
-	for r in $REPOS
+	for r in "$REPOS $REPOS_py2k"
 	do
 		#echo "WAITING FOR: $r (PID ${CLONE_PROCS[$r]})"
 		if wait ${CLONE_PROCS[$r]}
